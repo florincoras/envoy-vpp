@@ -1,0 +1,4 @@
+bazel-*
+clang.bazelrc
+user.bazelrc
+.vscode

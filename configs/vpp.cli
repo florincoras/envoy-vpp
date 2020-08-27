@@ -1,0 +1,6 @@
+set int ip address FortyGigabitEthernet18/0/0 6.0.1.1/24
+set int state FortyGigabitEthernet18/0/0 up
+create tap host-ip4-addr 6.0.2.2/24
+set int ip addr tap0 6.0.2.1/24
+set int state tap0 up
+session enable

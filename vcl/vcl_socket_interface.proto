@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package envoy.extensions.network.socket_interface.v3;
+
+option java_package = "io.envoyproxy.envoy.extensions.network.socket_interface.v3";
+option java_outer_classname = "VclSocketInterfaceProto";
+option java_multiple_files = true;
+
+// [#protodoc-title: Vcl Socket Interface configuration]
+
+// Configuration for vcl socket interface that relies on vpp comms library (VCL)
+message VclSocketInterface {
+}

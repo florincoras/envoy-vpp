@@ -1,0 +1,6 @@
+[submodule "envoy"]
+	path = envoy
+	url = https://github.com/envoyproxy/envoy.git
+[submodule "vpp"]
+	path = vpp
+	url = https://git.fd.io/vpp
