@@ -26,6 +26,6 @@ After updating VPP's example [startup configuration](configs/vpp_startup.conf), 
 1. `sudo ./vpp/build-root/install-vpp-native/vpp/bin/vpp -c configs/vpp_startup.conf`
 2. `./start_envoy.sh`
 
-To check that everything started successfuly `show session verbose` in VPP's cli should return one listening session on the proxy port configured in [proxy](configs/proxy.yaml) (default 10001). Both the address and the port of the proxy service should be updated to those of the actual HTTP server.
+To check that everything started successfuly `show session verbose` in VPP's cli should return one listening session on the proxy port configured in [proxy.yaml](configs/proxy.yaml) (default 10001). Both the address and the port of the proxy service should be updated to those of the actual HTTP server.
 
 VPP's example startup configuration assumes only one physical interface and a tap interface to be used to communicate with a local HTTP server using the Linux network stack.
