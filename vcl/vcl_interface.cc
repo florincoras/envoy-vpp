@@ -42,12 +42,12 @@ static void onMqSocketEvents(uint32_t flags) {
         evts |= Event::FileReadyType::Write;
       }
       if (events[i].events & (EPOLLERR | EPOLLHUP)) {
-        RELEASE_ASSERT(vcl_handle->isOpen(), "handle should be open");
+        RELEASE_ASSERT(vcl_handle->isOpen(), fmt::format ("handle 0x%x should be open", vcl_handle->sh()));
         evts |= Event::FileReadyType::Closed;
       }
 
-      VCL_LOG("got event on vcl handle fd %u sh %x events %x", vcl_handle->fd(), vcl_handle->sh(),
-              evts);
+      VCL_LOG("got event on vcl handle fd %u sh %x events %x", vcl_handle->fdDoNotUse(),
+              vcl_handle->sh(), evts);
       vcl_handle->cb(evts);
       VCL_LOG("done with event\n");
     }
@@ -113,15 +113,6 @@ VclSocketInterface::socket(Envoy::Network::Socket::Type socket_type,
     return nullptr;
   }
   return std::make_unique<VclIoHandle>(static_cast<uint32_t>(sh), 1 << 23);
-}
-
-Envoy::Network::IoHandlePtr VclSocketInterface::socket(os_fd_t fd) {
-  fprintf(stderr, "something still uses this?\n");
-  if (vppcom_worker_index() == -1) {
-    vcl_interface_worker_register();
-  }
-  VCL_LOG("trying to create socket3 sh %x epoll fd %d", fd, vppcom_mq_epoll_fd());
-  return std::make_unique<VclIoHandle>(static_cast<uint32_t>(fd), 1 << 23);
 }
 
 bool VclSocketInterface::ipFamilySupported(int domain) {

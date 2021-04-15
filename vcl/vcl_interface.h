@@ -41,7 +41,6 @@ public:
   Envoy::Network::IoHandlePtr
   socket(Envoy::Network::Socket::Type socket_type,
          const Envoy::Network::Address::InstanceConstSharedPtr addr) const override;
-  Envoy::Network::IoHandlePtr socket(os_fd_t fd) override;
   bool ipFamilySupported(int domain) override;
 
   // Server::Configuration::BootstrapExtensionFactory

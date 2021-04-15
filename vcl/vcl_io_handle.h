@@ -31,7 +31,7 @@ public:
     fprintf(stderr, "copyconstructor?\n");
   }
 
-  VclIoHandle(uint32_t sh, os_fd_t fd) : sh_(sh), fd_(fd) {}
+  VclIoHandle(uint32_t sh, os_fd_t fd) : sh_(sh), fd_(fd) { (void)fd_; }
 
   ~VclIoHandle() override;
 
@@ -47,7 +47,9 @@ public:
 
   Api::IoCallUint64Result readv(uint64_t max_length, Buffer::RawSlice* slices,
                                 uint64_t num_slice) override;
+  Api::IoCallUint64Result read(Buffer::Instance& buffer, absl::optional<uint64_t> max_length) override;
   Api::IoCallUint64Result writev(const Buffer::RawSlice* slices, uint64_t num_slice) override;
+  Api::IoCallUint64Result write(Buffer::Instance& buffer) override;
   Api::IoCallUint64Result recv(void* buffer, size_t length, int flags) override;
   Api::IoCallUint64Result sendmsg(const Buffer::RawSlice* slices, uint64_t num_slice, int flags,
                                   const Envoy::Network::Address::Ip* self_ip,
@@ -56,6 +58,7 @@ public:
                                   uint32_t self_port, RecvMsgOutput& output) override;
   Api::IoCallUint64Result recvmmsg(RawSliceArrays& slices, uint32_t self_port,
                                    RecvMsgOutput& output) override;
+  absl::optional<std::chrono::milliseconds> lastRoundTripTime() override;
 
   bool supportsMmsg() const override;
   bool supportsUdpGro() const override { return false; }
@@ -67,24 +70,33 @@ public:
   Api::SysCallIntResult setOption(int level, int optname, const void* optval,
                                   socklen_t optlen) override;
   Api::SysCallIntResult getOption(int level, int optname, void* optval, socklen_t* optlen) override;
+  Api::SysCallIntResult ioctl(unsigned long control_code, void* in_buffer,
+                              unsigned long in_buffer_len, void* out_buffer,
+                              unsigned long out_buffer_len, unsigned long* bytes_returned) override;
   Api::SysCallIntResult setBlocking(bool blocking) override;
   absl::optional<int> domain() override;
   Envoy::Network::Address::InstanceConstSharedPtr localAddress() override;
   Envoy::Network::Address::InstanceConstSharedPtr peerAddress() override;
-  Api::SysCallIntResult shutdown(int ) override { return {0, 0}; };
+  Api::SysCallIntResult shutdown(int) override { return {0, 0}; }
 
-  Event::FileEventPtr createFileEvent(Event::Dispatcher& dispatcher, Event::FileReadyCb cb,
-                                      Event::FileTriggerType trigger, uint32_t events) override;
+  void initializeFileEvent(Event::Dispatcher& dispatcher, Event::FileReadyCb cb,
+                           Event::FileTriggerType trigger, uint32_t events) override;
+  void activateFileEvents(uint32_t events) override { file_event_->activate(events); }
+  void enableFileEvents(uint32_t events) override { file_event_->setEnabled(events); }
+  void resetFileEvents() override { file_event_.reset(); }
+
   void cb(uint32_t events) { cb_(events); }
   void setCb(Event::FileReadyCb cb) { cb_ = cb; }
   void updateEvents(uint32_t events);
+
+  IoHandlePtr duplicate() override;
 
   bool no_sh_ = false;
 
 private:
   uint32_t sh_{VCL_INVALID_SH};
-  os_fd_t fd_;
-  absl::flat_hash_map<int, Envoy::Network::IoHandlePtr> listeners_;
+  os_fd_t fd_{~0};
+  Event::FileEventPtr file_event_{nullptr};
   bool is_listener_ = false;
 
   // Converts a VCL return types to IoCallUint64Result.
