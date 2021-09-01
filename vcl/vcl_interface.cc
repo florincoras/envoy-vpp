@@ -2,7 +2,7 @@
 
 #include "vcl/vcl_socket_interface.pb.h"
 
-#include "common/network/address_impl.h"
+#include "source/common/network/address_impl.h"
 
 #include "vcl/vcl_io_handle.h"
 
@@ -34,6 +34,14 @@ static void onMqSocketEvents(uint32_t flags) {
 
     for (int i = 0; i < n_events; i++) {
       VclIoHandle* vcl_handle = reinterpret_cast<VclIoHandle*>(events[i].data.u64);
+      if (vcl_handle->isWrkListener()) {
+        vcl_handle = vcl_handle->getParentListener();
+      }
+
+      // session closed due to some recently processed event
+      if (!vcl_handle->isOpen())
+        continue;
+
       uint32_t evts = 0;
       if (events[i].events & EPOLLIN) {
         evts |= Event::FileReadyType::Read;
@@ -42,7 +50,7 @@ static void onMqSocketEvents(uint32_t flags) {
         evts |= Event::FileReadyType::Write;
       }
       if (events[i].events & (EPOLLERR | EPOLLHUP)) {
-        RELEASE_ASSERT(vcl_handle->isOpen(), fmt::format ("handle 0x%x should be open", vcl_handle->sh()));
+        RELEASE_ASSERT(vcl_handle->isOpen(), fmt::format ("handle 0x{:x} should be open", vcl_handle->sh()));
         evts |= Event::FileReadyType::Closed;
       }
 

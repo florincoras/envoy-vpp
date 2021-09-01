@@ -5,8 +5,8 @@
 #include "envoy/api/io_error.h"
 #include "envoy/network/io_handle.h"
 
-#include "common/common/logger.h"
-#include "common/network/io_socket_error_impl.h"
+#include "source/common/common/logger.h"
+#include "source/common/network/io_socket_error_impl.h"
 
 #include "vpp/include/vcl/vppcom.h"
 
@@ -93,11 +93,30 @@ public:
 
   bool no_sh_ = false;
 
+  void setChildWrkListener(VclIoHandle* parent_listener) {
+    is_wrk_listener_ = true;
+    parent_listener_ = parent_listener;
+  }
+  void clearChildWrkListener() {
+    if (wrk_listener_) {
+      wrk_listener_.release();
+      wrk_listener_ = nullptr;
+    }
+  }
+  VclIoHandle* getParentListener() { return parent_listener_; }
+  bool isWrkListener() { return is_wrk_listener_; }
+
 private:
   uint32_t sh_{VCL_INVALID_SH};
   os_fd_t fd_{~0};
   Event::FileEventPtr file_event_{nullptr};
+
   bool is_listener_ = false;
+  bool is_wrk_listener_ = false;
+  bool not_listened_ = false;
+  VclIoHandle* parent_listener_{nullptr};
+  std::unique_ptr<VclIoHandle> wrk_listener_{nullptr};
+
 
   // Converts a VCL return types to IoCallUint64Result.
   Api::IoCallUint64Result vclCallResultToIoCallResult(const int32_t result) {

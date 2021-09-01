@@ -1,6 +1,6 @@
 #include "vcl/vcl_event.h"
 
-#include "common/runtime/runtime_features.h"
+#include "source/common/runtime/runtime_features.h"
 
 namespace Envoy {
 namespace Extensions {
@@ -15,7 +15,15 @@ VclEvent::VclEvent(Dispatcher& dispatcher, VclIoHandle& io_handle, FileReadyCb c
   });
 }
 
-VclEvent::~VclEvent() {}
+VclEvent::~VclEvent() {
+  // Worker listeners are valid only as long as the event is valid
+  if (io_handle_.isWrkListener()) {
+    auto parentListener = io_handle_.getParentListener();
+    if (parentListener)
+      parentListener->clearChildWrkListener();
+    io_handle_.close();
+  }
+}
 
 void VclEvent::activate(uint32_t events) {
   // events is not empty.
