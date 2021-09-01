@@ -10,7 +10,7 @@ To build the Envoy static binary with a dynamically linked VCL library:
 2. `cd vpp; make install-dep; make build-release; cd ..`
 3. `bazel build //:envoy`
 
-For more information on Envoy build requirements check [here](https://github.com/envoyproxy/envoy/blob/14be514c988f46ff38411a859c401b5cce4b4b3f/bazel/README.md). This was tested with prebuilt clang-9 packages from [LLVM official site](http://releases.llvm.org/download.html) and after:
+For more information on Envoy build requirements check [here](https://github.com/envoyproxy/envoy/blob/14be514c988f46ff38411a859c401b5cce4b4b3f/bazel/README.md). This was tested with prebuilt clang-11 packages from [LLVM official site](http://releases.llvm.org/download.html) and after:
 
 ```
 export CC=/path/to/clang

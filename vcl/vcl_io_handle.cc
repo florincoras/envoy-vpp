@@ -2,8 +2,8 @@
 
 #include <string.h>
 
-#include "common/buffer/buffer_impl.h"
-#include "common/network/address_impl.h"
+#include "source/common/buffer/buffer_impl.h"
+#include "source/common/network/address_impl.h"
 
 #include "vcl/vcl_event.h"
 #include "vcl/vcl_interface.h"
@@ -50,13 +50,13 @@ static void vclEndptCopy(sockaddr* addr, socklen_t* addrlen, const vppcom_endpt_
     sockaddr_in* addr4 = reinterpret_cast<sockaddr_in*>(addr);
     addr4->sin_family = AF_INET;
     *addrlen = std::min(static_cast<unsigned int>(sizeof(struct sockaddr_in)), *addrlen);
-    memcpy(&addr4->sin_addr, ep.ip, *addrlen);
+    memcpy(&addr4->sin_addr, ep.ip, *addrlen); // NOLINT(safe-memcpy)
     addr4->sin_port = ep.port;
   } else {
     sockaddr_in6* addr6 = reinterpret_cast<sockaddr_in6*>(addr);
     addr6->sin6_family = AF_INET6;
     *addrlen = std::min(static_cast<unsigned int>(sizeof(struct sockaddr_in6)), *addrlen);
-    memcpy(&addr6->sin6_addr, ep.ip, *addrlen);
+    memcpy(&addr6->sin6_addr, ep.ip, *addrlen); // NOLINT(safe-memcpy)
     addr6->sin6_port = ep.port;
   }
 }
@@ -70,13 +70,13 @@ Envoy::Network::Address::InstanceConstSharedPtr vclEndptToAddress(const vppcom_e
     addr.ss_family = AF_INET;
     len = sizeof(struct sockaddr_in);
     auto in4 = reinterpret_cast<struct sockaddr_in*>(&addr);
-    memcpy(&in4->sin_addr, ep.ip, len);
+    memcpy(&in4->sin_addr, ep.ip, len); // NOLINT(safe-memcpy)
     in4->sin_port = ep.port;
   } else {
     addr.ss_family = AF_INET6;
     len = sizeof(struct sockaddr_in6);
     auto in6 = reinterpret_cast<struct sockaddr_in6*>(&addr);
-    memcpy(&in6->sin6_addr, ep.ip, len);
+    memcpy(&in6->sin6_addr, ep.ip, len); // NOLINT(safe-memcpy)
     in6->sin6_port = ep.port;
   }
 
@@ -89,7 +89,7 @@ Envoy::Network::Address::InstanceConstSharedPtr vclEndptToAddress(const vppcom_e
     // address and the socket is actually v6 only, the returned address will be
     // regarded as a v6 address from dual stack socket. However, this address is not going to be
     // used to create socket. Wrong knowledge of dual stack support won't hurt.
-    return Envoy::Network::Address::addressFromSockAddr(addr, len, /*v6only=*/false);
+    return *Envoy::Network::Address::addressFromSockAddr(addr, len, /*v6only=*/false);
   } catch (const EnvoyException& e) {
     PANIC(fmt::format("Invalid remote address for fd: {}, error: {}", sh, e.what()));
   }
@@ -120,8 +120,26 @@ VclIoHandle::~VclIoHandle() {
 Api::IoCallUint64Result VclIoHandle::close() {
   VCL_LOG("closing sh %x", sh_);
   RELEASE_ASSERT(VCL_SH_VALID(sh_), "sh must be valid");
-  const int rc = vppcom_session_close(sh_);
-  VCL_SET_SH_INVALID(sh_);
+  int rc = 0, wrk_index;
+
+  wrk_index = vcl_wrk_index_or_register();
+
+  if (is_listener_) {
+    if (wrk_index) {
+      auto sh = wrk_listener_->sh();
+      RELEASE_ASSERT(wrk_index == vppcom_session_worker(sh), "listener close on wrong thread");
+      clearChildWrkListener();
+      rc = vppcom_session_close(sh);
+    } else {
+      clearChildWrkListener();
+      rc = vppcom_session_close(sh_);
+      VCL_SET_SH_INVALID(sh_);
+    }
+  } else {
+    rc = vppcom_session_close(sh_);
+    VCL_SET_SH_INVALID(sh_);
+  }
+
   return Api::IoCallUint64Result(
       rc, Api::IoErrorPtr(nullptr, Envoy::Network::IoSocketError::deleteIoError));
 }
@@ -209,8 +227,8 @@ Api::IoCallUint64Result VclIoHandle::write(Buffer::Instance& buffer) {
   constexpr uint64_t MaxSlices = 16;
   Buffer::RawSliceVector slices = buffer.getRawSlices(MaxSlices);
   Api::IoCallUint64Result result = writev(slices.begin(), slices.size());
-  if (result.ok() && result.rc_ > 0) {
-    buffer.drain(static_cast<uint64_t>(result.rc_));
+  if (result.ok() && result.return_value_ > 0) {
+    buffer.drain(static_cast<uint64_t>(result.return_value_));
   }
   return result;
 }
@@ -335,7 +353,7 @@ Api::SysCallIntResult VclIoHandle::bind(Envoy::Network::Address::InstanceConstSh
   return {rv < 0 ? -1 : 0, -rv};
 }
 
-Api::SysCallIntResult VclIoHandle::listen(int backlog) {
+Api::SysCallIntResult VclIoHandle::listen(int) {
   auto wrk_index = vcl_wrk_index_or_register();
   RELEASE_ASSERT(wrk_index != -1, "should be initialized");
 
@@ -345,15 +363,10 @@ Api::SysCallIntResult VclIoHandle::listen(int backlog) {
 
   is_listener_ = true;
 
-  int32_t rv = vppcom_session_listen(sh_, backlog);
+  if (!wrk_index)
+    not_listened_ = true;
 
-  VCL_LOG("about to call epoll ctl for sh %u wrk %u epoll_handle %u", sh_, wrk_index,
-          vcl_epoll_handle(wrk_index));
-  struct epoll_event ev;
-  ev.events = EPOLLIN;
-  ev.data.u64 = reinterpret_cast<uint64_t>(this);
-  rv = vppcom_epoll_ctl(vcl_epoll_handle(wrk_index), EPOLL_CTL_ADD, sh_, &ev);
-  return {rv < 0 ? -1 : 0, -rv};
+  return {0, 0};
 }
 
 Envoy::Network::IoHandlePtr VclIoHandle::accept(sockaddr* addr, socklen_t* addrlen) {
@@ -362,6 +375,7 @@ Envoy::Network::IoHandlePtr VclIoHandle::accept(sockaddr* addr, socklen_t* addrl
 
   auto sh = sh_;
   if (wrk_index) {
+    sh = wrk_listener_->sh();
     VCL_LOG("trying to accept fd %d sh %x", fd_, sh);
   }
 
@@ -593,9 +607,15 @@ Envoy::Network::Address::InstanceConstSharedPtr VclIoHandle::peerAddress() {
 }
 
 void VclIoHandle::updateEvents(uint32_t events) {
+  auto wrk_index = vcl_wrk_index_or_register();
+  VclIoHandle* vcl_handle = this;
+
+  if (wrk_index && is_listener_) {
+    vcl_handle = wrk_listener_.get();
+  }
 
   struct epoll_event ev;
-  ev.events = 0;
+  ev.events = EPOLLET;
 
   if (events & Event::FileReadyType::Read) {
     ev.events |= EPOLLIN;
@@ -607,18 +627,54 @@ void VclIoHandle::updateEvents(uint32_t events) {
     ev.events |= EPOLLERR | EPOLLHUP;
   }
 
-  auto wrk_index = vcl_wrk_index_or_register();
-  ev.data.u64 = reinterpret_cast<uint64_t>(this);
+  ev.data.u64 = reinterpret_cast<uint64_t>(vcl_handle);
 
-  vppcom_epoll_ctl(vcl_epoll_handle(wrk_index), EPOLL_CTL_MOD, sh_, &ev);
+  vppcom_epoll_ctl(vcl_epoll_handle(wrk_index), EPOLL_CTL_MOD, vcl_handle->sh(), &ev);
 }
 
 void VclIoHandle::initializeFileEvent(Event::Dispatcher& dispatcher, Event::FileReadyCb cb,
                                       Event::FileTriggerType, uint32_t events) {
   VCL_LOG("adding events for sh %x fd %u isListener %u", sh_, fd_, isListener());
 
+  auto wrk_index = vcl_wrk_index_or_register();
+  vcl_interface_register_epoll_event(dispatcher);
+
+  VclIoHandle* vcl_handle = this;
+
+  if (is_listener_) {
+    // If this is not the main worker, make sure a worker listener exists
+    if (wrk_index) {
+      if (!wrk_listener_) {
+        vppcom_endpt_t ep;
+        uint8_t addr_buf[sizeof(struct sockaddr_in6)];
+        ep.ip = addr_buf;
+        uint32_t proto;
+
+        if (peekVclSession(sh_, &ep, &proto)) {
+          RELEASE_ASSERT(0, "");
+        }
+
+        auto address = vclEndptToAddress(ep, -1);
+        auto sh = vppcom_session_create(proto, 1);
+        wrk_listener_ = std::make_unique<VclIoHandle>(static_cast<uint32_t>(sh), 1 << 23);
+        wrk_listener_->bind(address);
+        uint32_t rv = vppcom_session_listen(sh, 5);
+        if (rv) {
+          VCL_LOG ("listen failed sh %x", sh);
+          return;
+        }
+        wrk_listener_->setChildWrkListener(this);
+      }
+      vcl_handle = wrk_listener_.get();
+    // On main worker, no need to create worker listeners
+    } else if (not_listened_) {
+      vppcom_session_listen(sh_, 5);
+      not_listened_ = false;
+    }
+  }
+
   struct epoll_event ev;
-  ev.events = 0;
+  ev.events = EPOLLET;
 
   if (events & Event::FileReadyType::Read) {
     ev.events |= EPOLLIN;
@@ -630,14 +686,11 @@ void VclIoHandle::initializeFileEvent(Event::Dispatcher& dispatcher, Event::File
     ev.events |= EPOLLERR | EPOLLHUP;
   }
 
-  auto wrk_index = vcl_wrk_index_or_register();
-  vcl_interface_register_epoll_event(dispatcher);
-
   cb_ = cb;
-  ev.data.u64 = reinterpret_cast<uint64_t>(this);
-  vppcom_epoll_ctl(vcl_epoll_handle(wrk_index), EPOLL_CTL_ADD, sh_, &ev);
+  ev.data.u64 = reinterpret_cast<uint64_t>(vcl_handle);
+  vppcom_epoll_ctl(vcl_epoll_handle(wrk_index), EPOLL_CTL_ADD, vcl_handle->sh(), &ev);
 
-  file_event_ = Event::FileEventPtr{new VclEvent(dispatcher, *this, cb)};
+  file_event_ = Event::FileEventPtr{new VclEvent(dispatcher, *vcl_handle, cb)};
 }
 
 IoHandlePtr VclIoHandle::duplicate() {

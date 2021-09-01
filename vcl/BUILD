@@ -30,9 +30,9 @@ envoy_cc_library(
     deps = [
         ":pkg_cc_proto",
         "//:vcl_lib",
-        "@envoy//include/envoy/event:dispatcher_interface",
-        "@envoy//include/envoy/network:socket_interface",
-        "@envoy//source/common/common:logger_lib",
+        "@envoy//envoy/event:dispatcher_interface",
+        "@envoy//envoy/network:socket_interface",
+        "@envoy//source/common/common:minimal_logger_lib",
         "@envoy//source/common/event:dispatcher_includes",
         "@envoy//source/common/event:dispatcher_lib",
         "@envoy//source/common/event:libevent_scheduler_lib",

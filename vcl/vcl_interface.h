@@ -2,7 +2,7 @@
 
 #include "envoy/network/socket.h"
 
-#include "common/network/socket_interface.h"
+#include "source/common/network/socket_interface.h"
 
 #include "vpp/include/vcl/vppcom.h"
 

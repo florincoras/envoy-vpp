@@ -16,7 +16,7 @@ genrule(
 
 cc_library(
     name = "vcl_lib",
-    srcs = ["vpp/build-root/install-vpp-native/vpp/lib/libvppcom.so.21.06"],
+    srcs = ["vpp/build-root/install-vpp-native/vpp/lib/libvppcom.so.21.10"],
     hdrs = [":vpp_build"],
     includes = ["vpp/build-root/install-vpp-native/vpp/include/"],
 )
