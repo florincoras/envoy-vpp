@@ -12,6 +12,7 @@ namespace Network {
 namespace Vcl {
 
 #define VCL_DEBUG (0)
+#define VCL_RX_ZC (0)
 
 #if VCL_DEBUG > 0
 #define VCL_LOG(fmt, _args...) fprintf(stderr, "[%d] " fmt "\n", vppcom_worker_index(), ##_args)

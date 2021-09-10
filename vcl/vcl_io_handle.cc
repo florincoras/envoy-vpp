@@ -173,7 +173,8 @@ Api::IoCallUint64Result VclIoHandle::readv(uint64_t max_length, Buffer::RawSlice
   return vclCallResultToIoCallResult(result);
 }
 
-Api::IoCallUint64Result VclIoHandle::read(Buffer::Instance& buffer, absl::optional<uint64_t> ) {
+#if VCL_RX_ZC
+Api::IoCallUint64Result VclIoHandle::read(Buffer::Instance& buffer, absl::optional<uint64_t>) {
   vppcom_data_segment_t ds[16];
   int32_t rv;
 
@@ -188,8 +189,9 @@ Api::IoCallUint64Result VclIoHandle::read(Buffer::Instance& buffer, absl::option
     len = ds[ds_index].len;
     auto fragment = new Envoy::Buffer::BufferFragmentImpl(
         ds[ds_index].data, len,
-        [&, sh, len](const void*, size_t, const Envoy::Buffer::BufferFragmentImpl* this_fragment) {
-          vppcom_session_free_segments(sh, len);
+        [&, sh](const void*, size_t data_len,
+                const Envoy::Buffer::BufferFragmentImpl* this_fragment) {
+          vppcom_session_free_segments(sh, data_len);
           delete this_fragment;
         });
 
@@ -200,6 +202,23 @@ Api::IoCallUint64Result VclIoHandle::read(Buffer::Instance& buffer, absl::option
 
   return vclCallResultToIoCallResult(rv);
 }
+#else
+Api::IoCallUint64Result VclIoHandle::read(Buffer::Instance& buffer,
+                                          absl::optional<uint64_t> max_length_opt) {
+  uint64_t max_length = max_length_opt.value_or(UINT64_MAX);
+  if (max_length == 0) {
+    return Api::ioCallUint64ResultNoError();
+  }
+
+  Buffer::Reservation reservation = buffer.reserveForRead();
+  Api::IoCallUint64Result result = readv(std::min(reservation.length(), max_length),
+                                         reservation.slices(), reservation.numSlices());
+  uint64_t bytes_to_commit = result.ok() ? result.return_value_ : 0;
+  ASSERT(bytes_to_commit <= max_length);
+  reservation.commit(bytes_to_commit);
+  return result;
+}
+#endif
 
 Api::IoCallUint64Result VclIoHandle::writev(const Buffer::RawSlice* slices, uint64_t num_slice) {
   if (!VCL_SH_VALID(sh_)) {
